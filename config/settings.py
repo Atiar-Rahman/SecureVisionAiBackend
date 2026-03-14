@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from decouple import config
 from pathlib import Path
 
@@ -24,7 +26,8 @@ INSTALLED_APPS = [
     'debug_toolbar',
     'users',
     'rest_framework',
-
+    'djoser',
+    'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
@@ -111,8 +114,28 @@ INTERNAL_IPS = [
 ]
 
 REST_FRAMEWORK = {
-
+    'COERCE_DECIMAL_TO_STRING':False,
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny"
-    ]
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
+
+SIMPLE_JWT = {
+   'AUTH_HEADER_TYPES': ('JWT',),
+   "ACCESS_TOKEN_LIFETIME": timedelta(days=10),
+}
+
+
+DJOSER = {
+    # 'PASSWORD_RESET_CONFIRM_URL': '#/password/reset/confirm/{uid}/{token}',
+    # 'USERNAME_RESET_CONFIRM_URL': '#/username/reset/confirm/{uid}/{token}',
+    # 'ACTIVATION_URL': '#/activate/{uid}/{token}',
+    # 'SEND_ACTIVATION_EMAIL': True,
+    'SERIALIZERS': {
+        'user_create':'users.serializers.UserCreateSerializer',
+        'current_user':'users.serializers.UserSerializer',
+    },
 }
