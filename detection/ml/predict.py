@@ -74,7 +74,7 @@ def predict_frame14(frame, camera_id="default"):
         label = "Suspicious" if prediction > 0.5 else "Normal"
         confidence = float(prediction) if prediction > 0.5 else float(1 - prediction)
 
-        return label, confidence 
+        return label, confidence
     
 
 

@@ -31,12 +31,14 @@ INSTALLED_APPS = [
     'cameras',
     'api',
     'detection',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     'debug_toolbar.middleware.DebugToolbarMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -64,7 +66,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
@@ -113,7 +117,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+MEDIA_ROOT = BASE_DIR / "media"
 INTERNAL_IPS = [
     '127.0.0.1'
 ]

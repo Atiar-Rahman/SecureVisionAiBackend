@@ -6,7 +6,7 @@ import cv2
 from threading import Lock
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from detection.ml.predict import predict_frame14  # fully multi-camera safe
+from .ml.predict import predict_frame14  # fully multi-camera safe
 
 # Global camera locks
 camera_locks = {}
@@ -58,10 +58,10 @@ import numpy as np
 import cv2
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from detection.ml.predict import predict_frame14  # fully multi-camera safe
-
+from detection.ml.predict import predict_frame_multi  # fully multi-camera safe
+from cameras.models import Camera
 class DetectAPIViewUpdate(APIView):
-
+    
     def post(self, request):
         image_data = request.data.get("image")
         camera_id = request.data.get("camera_id")
@@ -84,7 +84,7 @@ class DetectAPIViewUpdate(APIView):
         # **Do NOT resize here**, predict_frame14 handles it
 
         # Predict using multi-camera safe function
-        label, confidence = predict_frame14(frame, camera_id)
+        label, confidence = predict_frame_multi(frame, camera_id)
 
         if label is None:
             return Response({"status": f"Collecting frames for camera {camera_id}..."})
@@ -94,3 +94,5 @@ class DetectAPIViewUpdate(APIView):
             "label": label,
             "confidence": round(confidence, 2)
         })
+    
+
