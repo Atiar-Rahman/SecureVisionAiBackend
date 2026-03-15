@@ -29,3 +29,26 @@ class CameraViewSet(ModelViewSet):
     def perform_update(self, serializer):
         # Do NOT allow frontend to change the user
         serializer.save()
+
+
+
+# cameras/views.py
+from rest_framework.viewsets import ViewSet
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from cameras.models import Camera
+
+class CameraListViewSet(ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        cameras = Camera.objects.filter(user=request.user, is_active=True).order_by('-created_at')
+        data = [
+            {
+                "id": cam.id,
+                "name": cam.name,
+                "camera_type": cam.camera_type,
+                "stream_url": cam.stream_url
+            } for cam in cameras
+        ]
+        return Response(data)

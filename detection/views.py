@@ -96,3 +96,50 @@ class DetectAPIViewUpdate(APIView):
         })
     
 
+# new for camera selected apply the camera
+# detection/views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from cameras.models import Camera
+import base64
+import numpy as np
+import cv2
+from detection.ml.predict import predict_frame_multi
+
+class DetectAPIView(APIView):
+    """
+    Receives base64 image + camera_name
+    Returns live prediction
+    """
+    def post(self, request):
+        image_data = request.data.get("image")
+        camera_name = request.data.get("camera_name")
+
+        if not image_data or not camera_name:
+            return Response({"error": "Image and camera_name required"}, status=400)
+
+        # Validate camera ownership
+        try:
+            Camera.objects.get(name=camera_name, user=request.user)
+        except Camera.DoesNotExist:
+            return Response({"error": "Camera not authorized"}, status=403)
+
+        try:
+            header, imgstr = image_data.split(";base64,")
+            img_bytes = base64.b64decode(imgstr)
+            frame = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+        except Exception:
+            return Response({"error": "Invalid image format"}, status=400)
+
+        if frame is None:
+            return Response({"error": "Cannot decode image"}, status=400)
+
+        label, confidence = predict_frame_multi(frame, camera_name)
+        if label is None:
+            return Response({"status": f"Collecting frames for {camera_name}..."})
+
+        return Response({
+            "camera_name": camera_name,
+            "label": label,
+            "confidence": round(confidence, 2)
+        })

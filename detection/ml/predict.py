@@ -143,3 +143,60 @@ def predict_frame_multi(frame, camera_id):
                 print(f"Snapshot save error: {e}")
 
         return label, confidence
+    
+
+
+# detection/ml/predict.py
+import cv2
+import numpy as np
+from threading import Lock
+from django.conf import settings
+from cameras.models import Camera
+import os
+
+SEQ_LEN = 16
+IMG_SIZE = 160
+
+model = load_model(model_path)
+
+camera_buffers = {}
+camera_locks = {}
+
+def predict_frame_multi15(frame, camera_name):
+    if frame is None or frame.size == 0:
+        return None, None
+
+    lock = camera_locks.setdefault(camera_name, Lock())
+    with lock:
+        buffer = camera_buffers.setdefault(camera_name, [])
+
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_rgb = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE))
+        frame_rgb = frame_rgb.astype("float32") / 255.0
+
+        buffer.append(frame_rgb)
+        if len(buffer) < SEQ_LEN:
+            return None, None
+
+        buffer = buffer[-SEQ_LEN:]
+        camera_buffers[camera_name] = buffer
+
+        input_array = np.expand_dims(np.stack(buffer, axis=0), axis=0)
+        pred = model.predict(input_array, verbose=0)[0][0]
+
+        label = "Suspicious" if pred > 0.5 else "Normal"
+        confidence = float(pred) if pred > 0.5 else float(1 - pred)
+
+        # Save snapshot if suspicious
+        if label == "Suspicious":
+            try:
+                cam = Camera.objects.get(name=camera_name)
+                filename = f"{camera_name}_{int(cv2.getTickCount())}.jpg"
+                path = os.path.join(settings.MEDIA_ROOT, "snapshots", filename)
+                cv2.imwrite(path, cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
+                cam.snapshot = f"snapshots/{filename}"
+                cam.save(update_fields=["snapshot"])
+            except Camera.DoesNotExist:
+                pass
+
+        return label, confidence
