@@ -1,5 +1,5 @@
 from datetime import timedelta
-
+import os
 from decouple import config
 from pathlib import Path
 
@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'djoser',
     'rest_framework_simplejwt',
+    'cameras',
+    'api',
 ]
 
 MIDDLEWARE = [
@@ -109,6 +111,8 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 INTERNAL_IPS = [
     '127.0.0.1'
 ]
