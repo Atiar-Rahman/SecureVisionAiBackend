@@ -4,6 +4,8 @@ from django.urls import path
 from cameras.views import CameraViewSet, CameraListViewSet
 from detection.views import DetectAPIView, DetectAPIViewUpdate, DetectAPIView14
 from alert.views import AlertViewSet
+from contact.views import ContactModelViewSet
+
 
 router = DefaultRouter()
 # Camera CRUD API
@@ -12,6 +14,8 @@ router.register('cameras', CameraViewSet, basename='cameras')
 router.register('camera-list', CameraListViewSet, basename='camera-list')
 # alert CRUD API
 router.register('alerts',AlertViewSet,basename='alert')
+# contact Crud API
+router.register('contact',ContactModelViewSet,basename='contact')
 
 
 urlpatterns = [
