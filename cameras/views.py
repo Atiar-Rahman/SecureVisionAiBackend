@@ -49,7 +49,7 @@ class CameraListViewSet(ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        cameras = Camera.objects.filter(user=request.user, is_active=True).order_by('-created_at')
+        cameras = Camera.objects.filter(user=request.user, is_active=True,status='online').order_by('-created_at')
         data = [
             {
                 "id": cam.id,
@@ -59,3 +59,5 @@ class CameraListViewSet(ViewSet):
             } for cam in cameras
         ]
         return Response(data)
+    
+

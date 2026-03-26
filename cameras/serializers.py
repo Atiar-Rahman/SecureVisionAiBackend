@@ -20,7 +20,7 @@ class CameraSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["status", "last_seen", "snapshot", "created_at", "updated_at"]
+        read_only_fields = ["last_seen", "snapshot", "created_at", "updated_at"]
 
     def validate_name(self, value):
         user = self.context['request'].user
