@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'api',
     'detection',
     'corsheaders',
+    'alert',
 ]
 
 MIDDLEWARE = [

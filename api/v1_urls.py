@@ -3,12 +3,16 @@ from rest_framework.routers import DefaultRouter
 from django.urls import path
 from cameras.views import CameraViewSet, CameraListViewSet
 from detection.views import DetectAPIView, DetectAPIViewUpdate, DetectAPIView14
+from alert.views import AlertViewSet
 
 router = DefaultRouter()
 # Camera CRUD API
 router.register('cameras', CameraViewSet, basename='cameras')
 # Optional: Only list cameras for dropdown
 router.register('camera-list', CameraListViewSet, basename='camera-list')
+# alert CRUD API
+router.register('alerts',AlertViewSet,basename='alert')
+
 
 urlpatterns = [
     # Legacy multi-frame API (optional)

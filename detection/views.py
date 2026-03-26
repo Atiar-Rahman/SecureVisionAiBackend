@@ -7,6 +7,7 @@ from threading import Lock
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .ml.predict import predict_frame14  # fully multi-camera safe
+from alert.models import Alert
 
 # Global camera locks
 camera_locks = {}
@@ -45,6 +46,18 @@ class DetectAPIView14(APIView):
 
         if label is None:
             return Response({"status": f"Collecting frames for camera {camera_id}..."})
+       
+        #save alert if suspicious
+        if label == 'Suspicious':
+            try:
+                Alert.objects.create(
+                user= self.request.user,
+                camera=camera_id,
+                alert_type="suspicious",
+                confidence=confidence
+            )
+            except Alert.DoesNotExist:
+                pass
 
         return Response({
             "camera_id": camera_id,
@@ -88,7 +101,17 @@ class DetectAPIViewUpdate(APIView):
 
         if label is None:
             return Response({"status": f"Collecting frames for camera {camera_id}..."})
-
+        #save alert if suspicious
+        if label == 'Suspicious':
+            try:
+                Alert.objects.create(
+                user= self.request.user,
+                camera=camera_id,
+                alert_type="suspicious",
+                confidence=confidence
+            )
+            except Alert.DoesNotExist:
+                pass
         return Response({
             "camera_id": camera_id,
             "label": label,
@@ -114,6 +137,7 @@ class DetectAPIView(APIView):
     def post(self, request):
         image_data = request.data.get("image")
         camera_name = request.data.get("camera_name")
+        camera_id = request.data.get('camera_id')
 
         if not image_data or not camera_name:
             return Response({"error": "Image and camera_name required"}, status=400)
@@ -137,6 +161,19 @@ class DetectAPIView(APIView):
         label, confidence = predict_frame_multi(frame, camera_name)
         if label is None:
             return Response({"status": f"Collecting frames for {camera_name}..."})
+        
+        #save alert if suspicious
+        if label == 'Suspicious':
+            try:
+                Alert.objects.create(
+                user= self.request.user,
+                camera=camera_id,
+                alert_type="suspicious",
+                confidence=confidence
+            )
+            except Alert.DoesNotExist:
+                pass
+
 
         return Response({
             "camera_name": camera_name,

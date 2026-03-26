@@ -19,8 +19,15 @@ class CameraViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Return only cameras owned by the logged-in user
-        return Camera.objects.filter(user=self.request.user).order_by('-created_at')
+        if getattr(self, 'swagger_fake_view', False):
+            return Camera.objects.none()
+
+        user = self.request.user
+
+        if not user.is_authenticated:
+            return Camera.objects.none()
+
+        return Camera.objects.filter(user=user).order_by('-created_at')
 
     def perform_create(self, serializer):
         # Auto-set user on creation
