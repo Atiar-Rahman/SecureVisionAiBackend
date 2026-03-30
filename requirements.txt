@@ -26,7 +26,7 @@ markdown-it-py==4.0.0
 mdurl==0.1.2
 ml_dtypes==0.5.4
 namex==0.1.0
-numpy==2.4.3
+numpy==1.24.4
 oauthlib==3.3.1
 opencv-python==4.13.0.92
 opt_einsum==3.4.0
@@ -49,7 +49,7 @@ six==1.17.0
 social-auth-app-django==5.7.0
 social-auth-core==4.8.5
 sqlparse==0.5.5
-tensorflow_cpu==2.21.0
+tensorflow-cpu==2.15.0
 termcolor==3.3.0
 typing_extensions==4.15.0
 uritemplate==4.2.0
