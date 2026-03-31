@@ -145,8 +145,6 @@ def predict_frame_multi(frame, camera_id):
         return label, confidence
     
 
-
-# detection/ml/predict.py
 import cv2
 import numpy as np
 from threading import Lock
@@ -167,36 +165,122 @@ def predict_frame_multi15(frame, camera_name):
         return None, None
 
     lock = camera_locks.setdefault(camera_name, Lock())
+
     with lock:
         buffer = camera_buffers.setdefault(camera_name, [])
 
+        # ---------------- preprocess ----------------
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame_rgb = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE))
-        frame_rgb = frame_rgb.astype("float32") / 255.0
+        resized = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE))
+        normalized = resized.astype("float32") / 255.0
 
-        buffer.append(frame_rgb)
+        buffer.append(normalized)
+
+        # keep last SEQ_LEN
+        if len(buffer) > SEQ_LEN:
+            del buffer[:-SEQ_LEN]
+
+        camera_buffers[camera_name] = buffer
+
+        # not enough frames yet
         if len(buffer) < SEQ_LEN:
             return None, None
 
-        buffer = buffer[-SEQ_LEN:]
-        camera_buffers[camera_name] = buffer
+        # ---------------- prediction ----------------
+        try:
+            input_array = np.expand_dims(np.array(buffer), axis=0)
 
-        input_array = np.expand_dims(np.stack(buffer, axis=0), axis=0)
-        pred = model.predict(input_array, verbose=0)[0][0]
+            if input_array.shape != (1, SEQ_LEN, IMG_SIZE, IMG_SIZE, 3):
+                print("[SHAPE ERROR]", input_array.shape)
+                return None, None
 
-        label = "Suspicious" if pred > 0.5 else "Normal"
-        confidence = float(pred) if pred > 0.5 else float(1 - pred)
+            pred = model.predict(input_array, verbose=0)
 
-        # Save snapshot if suspicious
+        except Exception as e:
+            print("[PRED ERROR]", e)
+            return None, None
+
+        # ---------------- SAFE PARSING ----------------
+        pred = np.array(pred).squeeze()
+
+        # sigmoid case
+        if pred.ndim == 0:
+            pred_value = float(pred)
+        else:
+            # softmax case → take class index + confidence
+            pred_value = float(np.max(pred))
+
+        # ---------------- LABEL ----------------
+        label = "Suspicious" if pred_value > 0.5 else "Normal"
+        confidence = max(pred_value, 1 - pred_value)
+
+        print(f"[{camera_name}] {label} | {confidence:.2f}")
+
+        # ---------------- snapshot ----------------
         if label == "Suspicious":
             try:
-                cam = Camera.objects.get(name=camera_name)
-                filename = f"{camera_name}_{int(cv2.getTickCount())}.jpg"
-                path = os.path.join(settings.MEDIA_ROOT, "snapshots", filename)
-                cv2.imwrite(path, cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
-                cam.snapshot = f"snapshots/{filename}"
-                cam.save(update_fields=["snapshot"])
-            except Camera.DoesNotExist:
-                pass
+                cam = Camera.objects.filter(name=camera_name).first()
+
+                if cam:
+                    filename = f"{camera_name}_{int(cv2.getTickCount())}.jpg"
+                    path = os.path.join(settings.MEDIA_ROOT, "snapshots", filename)
+
+                    cv2.imwrite(path, frame)
+
+                    cam.snapshot = f"snapshots/{filename}"
+                    cam.save(update_fields=["snapshot"])
+
+            except Exception as e:
+                print("Snapshot error:", e)
 
         return label, confidence
+    
+
+
+#vide predict
+
+import cv2
+import numpy as np
+
+SEQ_LEN = 16
+IMG_SIZE = 160
+
+def run_video_prediction(video_path, model):
+    cap = cv2.VideoCapture(video_path)
+
+    frames = []
+    results = []
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = frame.astype("float32") / 255.0
+
+        frames.append(frame)
+
+        if len(frames) == SEQ_LEN:
+            input_array = np.expand_dims(np.array(frames), axis=0)
+
+            pred = model.predict(input_array, verbose=0)
+            pred = np.array(pred).squeeze()
+
+            pred_value = float(np.max(pred))
+
+            label = "Suspicious" if pred_value > 0.5 else "Normal"
+
+            results.append(label)
+
+            frames.pop(0)
+
+    cap.release()
+
+    suspicious = results.count("Suspicious")
+    normal = results.count("Normal")
+
+    final = "Suspicious" if suspicious > normal else "Normal"
+
+    return final, suspicious, normal
