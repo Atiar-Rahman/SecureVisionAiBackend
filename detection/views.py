@@ -253,7 +253,76 @@ class DetectAPIViewSikp(APIView):
             "label": label,
             "confidence": round(confidence, 2)
         })
-    
+
+
+from detection.ml.predict3dcnn import predict_frame_multi3d
+
+class Detect3DCNNAPIView(APIView):
+    def post(self, request):
+        image_data = request.data.get("image")
+        camera_name = request.data.get("camera_name")
+        camera_id = request.data.get('camera_id')
+
+        if not image_data or not camera_name:
+            return Response({"error": "Image and camera_name required"}, status=400)
+
+        # Validate camera ownership
+        try:
+            Camera.objects.get(name=camera_name, user=request.user)
+        except Camera.DoesNotExist:
+            return Response({"error": "Camera not authorized"}, status=403)
+
+        # 🔹 Initialize counter if not exists
+        if camera_name not in frame_counters:
+            frame_counters[camera_name] = 0
+
+        # 🔹 Increment counter
+        frame_counters[camera_name] += 1
+
+        # 🔹 Skip logic (2 skip, 1 process)
+        if frame_counters[camera_name] % 3 != 0:
+            return Response({
+                "status": f"Frame skipped for {camera_name}"
+            })
+
+        # 🔹 Decode image
+        try:
+            header, imgstr = image_data.split(";base64,")
+            img_bytes = base64.b64decode(imgstr)
+            frame = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+        except Exception:
+            return Response({"error": "Invalid image format"}, status=400)
+
+        if frame is None:
+            return Response({"error": "Cannot decode image"}, status=400)
+
+        # 🔹 Prediction
+        label, confidence = predict_frame_multi3d(frame, camera_name)
+
+        if label is None:
+            return Response({"status": f"Collecting frames for {camera_name}..."})
+
+        # 🔹 Save alert
+        if label == 'Suspicious':
+            try:
+                Alert.objects.create(
+                    user=self.request.user,
+                    camera_id=camera_id,
+                    alert_type="suspicious",
+                    confidence=confidence
+                )
+            except Exception:
+                pass
+
+        return Response({
+            "camera_name": camera_name,
+            "label": label,
+            "confidence": round(confidence, 2)
+        })
+
+
+
+
 
 # for video upload and prediction
 # detection/views.py

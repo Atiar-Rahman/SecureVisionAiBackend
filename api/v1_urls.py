@@ -2,7 +2,7 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
 from cameras.views import CameraViewSet, CameraListViewSet
-from detection.views import DetectAPIView, DetectAPIViewUpdate, DetectAPIView14,DetectAPIViewSikp,VideoPredictionViewSet
+from detection.views import DetectAPIView, DetectAPIViewUpdate, DetectAPIView14,DetectAPIViewSikp,VideoPredictionViewSet,Detect3DCNNAPIView
 from alert.views import AlertViewSet
 from contact.views import ContactModelViewSet
 
@@ -28,7 +28,8 @@ urlpatterns = [
 
     # Production-ready detection API (multi-camera safe)
     path("detection/", DetectAPIView.as_view(), name="detection"),
-    path('detection-skip/',DetectAPIViewSikp.as_view(),name='frame-skip')
+    path('detection-skip/',DetectAPIViewSikp.as_view(),name='frame-skip'),
+    path('detection-3dcnn/',Detect3DCNNAPIView.as_view(),name='frame-3d')
 ]
 
 # Include router URLs (Camera CRUD + Camera list)
