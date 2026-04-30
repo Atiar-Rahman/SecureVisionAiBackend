@@ -5,6 +5,7 @@ from cameras.views import CameraViewSet, CameraListViewSet
 from detection.views import DetectAPIView, DetectAPIViewUpdate, DetectAPIView14,DetectAPIViewSikp,VideoPredictionViewSet,Detect3DCNNAPIView
 from alert.views import AlertViewSet
 from contact.views import ContactModelViewSet
+from reviews.views import ReviewViewSet
 
 
 router = DefaultRouter()
@@ -16,6 +17,7 @@ router.register('camera-list', CameraListViewSet, basename='camera-list')
 router.register('alerts',AlertViewSet,basename='alert')
 # contact Crud API
 router.register('contact',ContactModelViewSet,basename='contact')
+router.register('reviews', ReviewViewSet, basename='reviews')
 # video upload url
 router.register("video-predictions", VideoPredictionViewSet, basename="video-pred")
 

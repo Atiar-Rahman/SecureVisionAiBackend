@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'alert',
     'contact',
+    'reviews'
 ]
 
 MIDDLEWARE = [
@@ -74,6 +75,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "https://secure-vision-ai-frontend.vercel.app",
 ]
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
@@ -134,7 +136,7 @@ INTERNAL_IPS = [
 REST_FRAMEWORK = {
     'COERCE_DECIMAL_TO_STRING':False,
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny"
+        "rest_framework.permissions.IsAuthenticated"
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',

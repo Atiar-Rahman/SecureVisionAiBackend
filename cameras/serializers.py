@@ -24,7 +24,10 @@ class CameraSerializer(serializers.ModelSerializer):
 
     def validate_name(self, value):
         user = self.context['request'].user
-        if Camera.objects.filter(user=user, name=value).exists():
+        queryset = Camera.objects.filter(user=user, name=value)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
             raise serializers.ValidationError("You already have a camera with this name.")
         return value
     

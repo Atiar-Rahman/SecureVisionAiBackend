@@ -8,6 +8,7 @@ class VideoPredictionSerializer(serializers.ModelSerializer):
         model = VideoPrediction
         fields = "__all__"
         read_only_fields = (
+            "user",
             "final_result",
             "suspicious_frames",
             "normal_frames",

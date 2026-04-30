@@ -1,7 +1,9 @@
 from django.db import models
 from cameras.models import Camera
+from users.models import User
 # Create your models here.
 class VideoPrediction(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="video_predictions", null=True, blank=True)
     camera = models.ForeignKey(Camera, on_delete=models.CASCADE, null=True, blank=True)
     video = models.FileField(upload_to="videos/")
     
