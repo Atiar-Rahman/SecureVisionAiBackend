@@ -5,7 +5,15 @@ import os
 import numpy as np
 import cv2
 from threading import Lock
+import tensorflow as tf
 from tensorflow.keras.models import load_model  # type: ignore
+
+# Enable mixed precision for faster computation
+try:
+    policy = tf.keras.mixed_precision.Policy('mixed_float16')
+    tf.keras.mixed_precision.set_global_policy(policy)
+except:
+    pass
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 model_path = os.path.join(BASE_DIR, "ml", "best_cnn_lstm_model.h5")
@@ -13,60 +21,121 @@ model_path = os.path.join(BASE_DIR, "ml", "best_cnn_lstm_model.h5")
 # Load model ONCE
 model = load_model(model_path)
 
+# Compile model for faster inference
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# Create a TF function wrapper for faster prediction
+@tf.function(reduce_retracing=True)
+def _fast_predict(input_array):
+    """TensorFlow compiled function for fast prediction"""
+    return model(input_array, training=False)
+
 SEQ_LEN = 16
 IMG_SIZE = 160
+
+# Frame skipping configuration (configurable per camera)
+# SKIP_RATE = 1 means process every frame (no skipping, slower but more accurate)
+# SKIP_RATE = 2 means process every 2nd frame (faster, still good accuracy)
+# SKIP_RATE = 3 means process every 3rd frame (fastest, good for high FPS cameras)
+SKIP_RATE = 1  # Can be overridden per camera
 
 # Global camera buffers and locks
 camera_buffers = {}
 camera_locks = {}
+camera_frame_counts = {}   # Track frame count per camera for debugging
+camera_timestamps = {}     # Track timestamps for frame sequencing
+camera_skip_counters = {}  # Track skip count for frame skipping
+camera_skip_rates = {}     # Configurable skip rate per camera (default: SKIP_RATE)
 
 
-def predict_frame14(frame, camera_id="default"):
+def set_camera_skip_rate(camera_id, skip_rate):
+    """
+    Set frame skip rate for a specific camera.
+    skip_rate=1: process every frame (no skipping)
+    skip_rate=2: process every 2nd frame (50% faster)
+    skip_rate=3: process every 3rd frame (66% faster)
+    """
+    camera_skip_rates[camera_id] = skip_rate
+    print(f"[{camera_id}] Skip rate set to {skip_rate}")
+
+
+def predict_frame14(frame, camera_id="default", skip_rate=None):
+    """
+    Optimized prediction with intelligent frame skipping.
+    
+    Args:
+        frame: Input frame
+        camera_id: Camera identifier
+        skip_rate: Override skip rate for this call (1=no skip, 2=every 2nd, etc.)
+    
+    Returns:
+        (label, confidence) or (None, None) if still collecting frames
+    """
     if frame is None or frame.size == 0:
         return None, None
+
+    # Determine skip rate for this camera
+    if skip_rate is None:
+        skip_rate = camera_skip_rates.get(camera_id, SKIP_RATE)
 
     # Get camera lock
     lock = camera_locks.setdefault(camera_id, Lock())
     with lock:
+        # Initialize camera state if needed
         if camera_id not in camera_buffers:
             camera_buffers[camera_id] = []
+            camera_frame_counts[camera_id] = 0
+            camera_timestamps[camera_id] = []
+            camera_skip_counters[camera_id] = 0
 
+        skip_counter = camera_skip_counters[camera_id]
         buffer = camera_buffers[camera_id]
+        timestamps = camera_timestamps[camera_id]
 
-        # Preprocess frame
+        # Increment skip counter
+        skip_counter = (skip_counter + 1) % skip_rate
+        camera_skip_counters[camera_id] = skip_counter
+
+        # Skip this frame if skip_counter != 0
+        if skip_counter != 0:
+            return None, None  # Skip this frame
+
+        # Preprocess frame (only if we're not skipping it)
         try:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE))
+            frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_LINEAR)
             frame = frame.astype("float32") / 255.0
         except Exception as e:
             print(f"Frame preprocessing error: {e}")
             return None, None
 
+        # Add frame to buffer (only frames that aren't skipped)
         buffer.append(frame)
+        timestamps.append(camera_frame_counts[camera_id])
+        camera_frame_counts[camera_id] += 1
 
-        # Keep only last SEQ_LEN frames
+        # Keep only last SEQ_LEN frames - proper sliding window
+        if len(buffer) > SEQ_LEN:
+            buffer = buffer[-SEQ_LEN:]
+            timestamps = timestamps[-SEQ_LEN:]
+            camera_buffers[camera_id] = buffer
+            camera_timestamps[camera_id] = timestamps
+
+        # Not enough frames yet - return None to signal buffering
         if len(buffer) < SEQ_LEN:
             return None, None
 
-        buffer = buffer[-SEQ_LEN:]
-        camera_buffers[camera_id] = buffer
-
-        # Ensure consistent frame shapes
-        consistent_buffer = []
-        for f in buffer:
-            if f.shape == (IMG_SIZE, IMG_SIZE, 3):
-                consistent_buffer.append(f)
-            else:
-                f_resized = cv2.resize(f, (IMG_SIZE, IMG_SIZE))
-                consistent_buffer.append(f_resized)
-
-        # Convert to NumPy array
-        buffer_array = np.stack(consistent_buffer, axis=0)  # (SEQ_LEN, IMG_SIZE, IMG_SIZE, 3)
-        input_array = np.expand_dims(buffer_array, axis=0)  # (1, SEQ_LEN, IMG_SIZE, IMG_SIZE, 3)
-
-        # Predict
+        # Stack frames for prediction
         try:
-            prediction = model.predict(input_array, verbose=0)[0][0]
+            buffer_array = np.stack(buffer, axis=0)  # (SEQ_LEN, IMG_SIZE, IMG_SIZE, 3)
+            input_array = np.expand_dims(buffer_array, axis=0)  # (1, SEQ_LEN, IMG_SIZE, IMG_SIZE, 3)
+            
+            # Convert to tensor once
+            input_tensor = tf.convert_to_tensor(input_array, dtype=tf.float32)
+            
+            # Use fast prediction
+            prediction = _fast_predict(input_tensor).numpy()[0][0]
+            
         except Exception as e:
             print(f"Model prediction error: {e}")
             return None, None
@@ -89,37 +158,79 @@ from cameras.models import Camera
 SEQ_LEN = 16
 IMG_SIZE = 160
 
-def predict_frame_multi(frame, camera_id):
+def predict_frame_multi(frame, camera_id, skip_rate=None):
+    """
+    Optimized prediction with intelligent frame skipping and snapshot saving.
+    
+    Args:
+        frame: Input frame
+        camera_id: Camera identifier
+        skip_rate: Override skip rate for this call (1=no skip, 2=every 2nd, etc.)
+    """
     if frame is None or frame.size == 0:
         return None, None
+
+    # Determine skip rate for this camera
+    if skip_rate is None:
+        skip_rate = camera_skip_rates.get(camera_id, SKIP_RATE)
 
     # Thread-safe buffer
     lock = camera_locks.setdefault(camera_id, Lock())
     with lock:
-        buffer = camera_buffers.setdefault(camera_id, [])
+        # Initialize camera state if needed
+        if camera_id not in camera_buffers:
+            camera_buffers[camera_id] = []
+            camera_frame_counts[camera_id] = 0
+            camera_timestamps[camera_id] = []
+            camera_skip_counters[camera_id] = 0
+        
+        buffer = camera_buffers[camera_id]
+        timestamps = camera_timestamps[camera_id]
+        skip_counter = camera_skip_counters[camera_id]
 
-        # Preprocess
+        # Increment skip counter
+        skip_counter = (skip_counter + 1) % skip_rate
+        camera_skip_counters[camera_id] = skip_counter
+
+        # Skip this frame if skip_counter != 0
+        if skip_counter != 0:
+            return None, None  # Skip this frame
+
+        # Preprocess (only if we're not skipping)
         try:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_resized = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE))
+            frame_resized = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_LINEAR)
             frame_norm = frame_resized.astype("float32") / 255.0
         except Exception as e:
             print(f"Preprocessing error: {e}")
             return None, None
 
+        # Add frame to buffer - preserve order, no skipping in buffer
         buffer.append(frame_norm)
-        buffer = buffer[-SEQ_LEN:]  # Keep last SEQ_LEN frames
-        camera_buffers[camera_id] = buffer
+        timestamps.append(camera_frame_counts[camera_id])
+        camera_frame_counts[camera_id] += 1
+        
+        # Keep only last SEQ_LEN frames (sliding window)
+        if len(buffer) > SEQ_LEN:
+            buffer = buffer[-SEQ_LEN:]
+            timestamps = timestamps[-SEQ_LEN:]
+            camera_buffers[camera_id] = buffer
+            camera_timestamps[camera_id] = timestamps
 
+        # Wait until buffer full
         if len(buffer) < SEQ_LEN:
-            return None, None  # Wait until buffer full
+            return None, None
 
         # Prepare input for model
-        input_array = np.expand_dims(np.stack(buffer, axis=0), axis=0)  # (1, SEQ_LEN, IMG_SIZE, IMG_SIZE, 3)
-
-        # Predict
         try:
-            prediction = model.predict(input_array, verbose=0)[0][0]
+            input_array = np.expand_dims(np.stack(buffer, axis=0), axis=0)  # (1, SEQ_LEN, IMG_SIZE, IMG_SIZE, 3)
+            
+            # Convert to tensor once
+            input_tensor = tf.convert_to_tensor(input_array, dtype=tf.float32)
+            
+            # Use fast prediction
+            prediction = _fast_predict(input_tensor).numpy()[0][0]
+            
         except Exception as e:
             print(f"Model prediction error: {e}")
             return None, None
@@ -160,33 +271,71 @@ model = load_model(model_path)
 camera_buffers = {}
 camera_locks = {}
 
-def predict_frame_multi15(frame, camera_name):
+def predict_frame_multi15(frame, camera_name, skip_rate=None):
+    """
+    Optimized prediction with intelligent frame skipping.
+    
+    Args:
+        frame: Input frame
+        camera_name: Camera name identifier
+        skip_rate: Override skip rate for this call (1=no skip, 2=every 2nd, etc.)
+    """
     if frame is None or frame.size == 0:
         return None, None
+
+    # Determine skip rate for this camera
+    if skip_rate is None:
+        skip_rate = camera_skip_rates.get(camera_name, SKIP_RATE)
 
     lock = camera_locks.setdefault(camera_name, Lock())
 
     with lock:
-        buffer = camera_buffers.setdefault(camera_name, [])
+        # Initialize camera state if needed
+        if camera_name not in camera_buffers:
+            camera_buffers[camera_name] = []
+            camera_frame_counts[camera_name] = 0
+            camera_timestamps[camera_name] = []
+            camera_skip_counters[camera_name] = 0
 
-        # ---------------- preprocess ----------------
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        resized = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE))
-        normalized = resized.astype("float32") / 255.0
+        buffer = camera_buffers[camera_name]
+        timestamps = camera_timestamps[camera_name]
+        skip_counter = camera_skip_counters[camera_name]
 
+        # Increment skip counter
+        skip_counter = (skip_counter + 1) % skip_rate
+        camera_skip_counters[camera_name] = skip_counter
+
+        # Skip this frame if skip_counter != 0
+        if skip_counter != 0:
+            return None, None  # Skip this frame
+
+        # Preprocess (only if we're not skipping)
+        try:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            resized = cv2.resize(frame_rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_LINEAR)
+            normalized = resized.astype("float32") / 255.0
+        except Exception as e:
+            print(f"[PREPROCESS ERROR] {e}")
+            return None, None
+
+        # Add frame to buffer - preserve order, no skipping in buffer
         buffer.append(normalized)
+        timestamps.append(camera_frame_counts[camera_name])
+        camera_frame_counts[camera_name] += 1
 
-        # keep last SEQ_LEN
+        # Keep last SEQ_LEN frames (sliding window)
         if len(buffer) > SEQ_LEN:
             del buffer[:-SEQ_LEN]
+            timestamps = timestamps[-SEQ_LEN:]
 
         camera_buffers[camera_name] = buffer
+        camera_timestamps[camera_name] = timestamps
 
         # not enough frames yet
         if len(buffer) < SEQ_LEN:
             return None, None
 
-        # ---------------- prediction ----------------
+        # Prediction (optimized with @tf.function)
         try:
             input_array = np.expand_dims(np.array(buffer), axis=0)
 
@@ -194,13 +343,15 @@ def predict_frame_multi15(frame, camera_name):
                 print("[SHAPE ERROR]", input_array.shape)
                 return None, None
 
-            pred = model.predict(input_array, verbose=0)
+            # Convert to tensor and use fast predict
+            input_tensor = tf.convert_to_tensor(input_array, dtype=tf.float32)
+            pred = _fast_predict(input_tensor).numpy()
 
         except Exception as e:
             print("[PRED ERROR]", e)
             return None, None
 
-        # ---------------- SAFE PARSING ----------------
+        # SAFE PARSING
         pred = np.array(pred).squeeze()
 
         # sigmoid case
@@ -210,13 +361,13 @@ def predict_frame_multi15(frame, camera_name):
             # softmax case → take class index + confidence
             pred_value = float(np.max(pred))
 
-        # ---------------- LABEL ----------------
+        # LABEL
         label = "Suspicious" if pred_value > 0.5 else "Normal"
         confidence = max(pred_value, 1 - pred_value)
 
         print(f"[{camera_name}] {label} | {confidence:.2f}")
 
-        # ---------------- snapshot ----------------
+        # snapshot
         if label == "Suspicious":
             try:
                 cam = Camera.objects.filter(name=camera_name).first()
@@ -246,6 +397,7 @@ SEQ_LEN = 16
 IMG_SIZE = 160
 
 def run_video_prediction(video_path, model):
+    """Optimized video prediction using TensorFlow compiled function"""
     cap = cv2.VideoCapture(video_path)
 
     frames = []
@@ -256,23 +408,29 @@ def run_video_prediction(video_path, model):
         if not ret:
             break
 
-        frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE))
+        frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_LINEAR)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame = frame.astype("float32") / 255.0
 
         frames.append(frame)
 
         if len(frames) == SEQ_LEN:
-            input_array = np.expand_dims(np.array(frames), axis=0)
+            try:
+                input_array = np.expand_dims(np.array(frames), axis=0)
+                
+                # Convert to tensor and use fast predict
+                input_tensor = tf.convert_to_tensor(input_array, dtype=tf.float32)
+                pred = _fast_predict(input_tensor).numpy()
+                
+                pred = np.array(pred).squeeze()
 
-            pred = model.predict(input_array, verbose=0)
-            pred = np.array(pred).squeeze()
+                pred_value = float(np.max(pred))
 
-            pred_value = float(np.max(pred))
+                label = "Suspicious" if pred_value > 0.5 else "Normal"
 
-            label = "Suspicious" if pred_value > 0.5 else "Normal"
-
-            results.append(label)
+                results.append(label)
+            except Exception as e:
+                print(f"Video prediction error: {e}")
 
             frames.pop(0)
 
