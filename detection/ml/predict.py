@@ -7,6 +7,8 @@ import cv2
 from threading import Lock
 import tensorflow as tf
 from tensorflow.keras.models import load_model  # type: ignore
+from django.conf import settings
+from cameras.models import Camera
 
 # Enable mixed precision for faster computation
 try:
@@ -255,21 +257,6 @@ def predict_frame_multi(frame, camera_id, skip_rate=None):
 
         return label, confidence
     
-
-import cv2
-import numpy as np
-from threading import Lock
-from django.conf import settings
-from cameras.models import Camera
-import os
-
-SEQ_LEN = 16
-IMG_SIZE = 160
-
-model = load_model(model_path)
-
-camera_buffers = {}
-camera_locks = {}
 
 def predict_frame_multi15(frame, camera_name, skip_rate=None):
     """

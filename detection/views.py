@@ -84,7 +84,6 @@ class DetectAPIView14(APIView):
         except ValidationError as exc:
             return Response(exc.detail, status=400)
 
-        frame = cv2.resize(frame, (160, 160))
         prediction_key = _get_prediction_key(camera)
 
         lock = camera_locks.setdefault(prediction_key, Lock())
@@ -92,18 +91,12 @@ class DetectAPIView14(APIView):
             label, confidence = predict_frame14(frame, prediction_key)
 
         if label is None:
-            return Response({"status": f"Collecting frames for camera {camera.id}..."})
+            return Response({"label": None, "confidence": None})
 
         if label == "Suspicious":
             _build_alert(request.user, camera, confidence)
 
-        return Response(
-            {
-                "camera_id": camera.id,
-                "label": label,
-                "confidence": round(confidence, 2),
-            }
-        )
+        return Response({"label": label, "confidence": round(confidence, 2)})
 
 
 class DetectAPIViewUpdate(APIView):
@@ -129,18 +122,12 @@ class DetectAPIViewUpdate(APIView):
         label, confidence = predict_frame_multi(frame, prediction_key)
 
         if label is None:
-            return Response({"status": f"Collecting frames for camera {camera.id}..."})
+            return Response({"label": None, "confidence": None})
 
         if label == "Suspicious":
             _build_alert(request.user, camera, confidence)
 
-        return Response(
-            {
-                "camera_id": camera.id,
-                "label": label,
-                "confidence": round(confidence, 2),
-            }
-        )
+        return Response({"label": label, "confidence": round(confidence, 2)})
 
 
 class DetectAPIView(APIView):
@@ -169,26 +156,12 @@ class DetectAPIView(APIView):
             return Response({"error": "Prediction failed"}, status=500)
 
         if label is None:
-            return Response(
-                {
-                    "status": "collecting",
-                    "label": None,
-                    "confidence": None,
-                    "camera_name": camera.name,
-                }
-            )
+            return Response({"label": None, "confidence": None})
 
         if label == "Suspicious":
             _build_alert(request.user, camera, confidence)
 
-        return Response(
-            {
-                "status": "ok",
-                "camera_name": camera.name,
-                "label": label,
-                "confidence": round(confidence, 2),
-            }
-        )
+        return Response({"label": label, "confidence": round(confidence, 2)})
 
 
 class DetectAPIViewSikp(APIView):
@@ -209,7 +182,7 @@ class DetectAPIViewSikp(APIView):
         frame_counters[prediction_key] = frame_counters.get(prediction_key, 0) + 1
 
         if frame_counters[prediction_key] % 3 != 0:
-            return Response({"status": f"Frame skipped for {camera.name}"})
+            return Response({"label": None, "confidence": None})
 
         try:
             frame = _decode_base64_frame(image_data)
@@ -219,18 +192,12 @@ class DetectAPIViewSikp(APIView):
         label, confidence = predict_frame_multi(frame, prediction_key)
 
         if label is None:
-            return Response({"status": f"Collecting frames for {camera.name}..."})
+            return Response({"label": None, "confidence": None})
 
         if label == "Suspicious":
             _build_alert(request.user, camera, confidence)
 
-        return Response(
-            {
-                "camera_name": camera.name,
-                "label": label,
-                "confidence": round(confidence, 2),
-            }
-        )
+        return Response({"label": label, "confidence": round(confidence, 2)})
 
 
 class Detect3DCNNAPIView(APIView):
@@ -251,7 +218,7 @@ class Detect3DCNNAPIView(APIView):
         frame_counters[prediction_key] = frame_counters.get(prediction_key, 0) + 1
 
         if frame_counters[prediction_key] % 3 != 0:
-            return Response({"status": f"Frame skipped for {camera.name}"})
+            return Response({"label": None, "confidence": None})
 
         try:
             frame = _decode_base64_frame(image_data)
@@ -261,18 +228,12 @@ class Detect3DCNNAPIView(APIView):
         label, confidence = predict_frame_multi3d(frame, prediction_key)
 
         if label is None:
-            return Response({"status": f"Collecting frames for {camera.name}..."})
+            return Response({"label": None, "confidence": None})
 
         if label == "Suspicious":
             _build_alert(request.user, camera, confidence)
 
-        return Response(
-            {
-                "camera_name": camera.name,
-                "label": label,
-                "confidence": round(confidence, 2),
-            }
-        )
+        return Response({"label": label, "confidence": round(confidence, 2)})
 
 
 class VideoPredictionViewSet(viewsets.ModelViewSet):

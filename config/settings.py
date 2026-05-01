@@ -19,6 +19,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 INSTALLED_APPS = [
     "whitenoise.runserver_nostatic",
+    'daphne',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -72,6 +74,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
@@ -144,6 +147,14 @@ MEDIA_ROOT = BASE_DIR / "media"
 INTERNAL_IPS = [
     '127.0.0.1'
 ]
+
+# Channels configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
+
 
 REST_FRAMEWORK = {
     'COERCE_DECIMAL_TO_STRING':False,
