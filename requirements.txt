@@ -34,6 +34,7 @@ optree==0.19.0
 packaging==26.2
 pillow==12.2.0
 protobuf==7.34.1
+psycopg2-binary==2.9.12
 pycparser==3.0
 Pygments==2.20.0
 PyJWT==2.12.1
@@ -57,4 +58,3 @@ urllib3==2.6.3
 wheel==0.47.0
 whitenoise==6.12.0
 wrapt==2.1.2
-gunicorn==21.2.0
