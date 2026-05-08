@@ -11,6 +11,7 @@ class Alert(models.Model):
 
     alert_type = models.CharField(max_length=50)
     confidence = models.FloatField()
+    frame_url = models.URLField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

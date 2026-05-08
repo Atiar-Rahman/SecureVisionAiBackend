@@ -52,6 +52,18 @@ IMG_SIZE = 160
 # Frame skipping configuration
 SKIP_RATE = 1  # Can be overridden per camera
 
+
+def _save_camera_snapshot(camera, frame, *, prefix="suspicious"):
+    if camera is None or frame is None or frame.size == 0:
+        return
+
+    _, buffer_jpg = cv2.imencode(".jpg", frame)
+    filename = f"{prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+    camera.snapshot.save(filename, ContentFile(buffer_jpg.tobytes()), save=False)
+    camera.last_seen = timezone.now()
+    camera.status = "online"
+    camera.save(update_fields=["snapshot", "last_seen", "status"])
+
 def set_camera_skip_rate_3d(camera_id, skip_rate):
     """
     Set frame skip rate for a specific camera.
@@ -82,6 +94,8 @@ def predict_frame_multi3d(frame, camera_id, skip_rate=None):
     # Thread-safe buffer
     lock = camera_locks.setdefault(camera_id, Lock())
     with lock:
+        original_frame = frame.copy()
+
         # Initialize camera state if needed
         if camera_id not in camera_buffers:
             camera_buffers[camera_id] = []
@@ -146,12 +160,7 @@ def predict_frame_multi3d(frame, camera_id, skip_rate=None):
         if label == "Suspicious":
             try:
                 camera = Camera.objects.get(id=camera_id)
-                _, buffer_jpg = cv2.imencode('.jpg', frame)
-                filename = f"suspicious_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                camera.snapshot.save(filename, ContentFile(buffer_jpg.tobytes()), save=False)
-                camera.last_seen = timezone.now()
-                camera.status = "online"
-                camera.save(update_fields=["snapshot", "last_seen", "status"])
+                _save_camera_snapshot(camera, original_frame)
             except Camera.DoesNotExist:
                 print(f"Camera {camera_id} not found")
             except Exception as e:

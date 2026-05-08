@@ -149,16 +149,20 @@ def predict_frame14(frame, camera_id="default", skip_rate=None):
     
 
 
-# snapshot screenshot
-
-import numpy as np
-import cv2
 from django.core.files.base import ContentFile
 from django.utils import timezone
-from cameras.models import Camera
 
-SEQ_LEN = 16
-IMG_SIZE = 160
+
+def _save_camera_snapshot(camera, frame, *, prefix="suspicious"):
+    if camera is None or frame is None or frame.size == 0:
+        return
+
+    _, buffer_jpg = cv2.imencode(".jpg", frame)
+    filename = f"{prefix}_{timezone.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+    camera.snapshot.save(filename, ContentFile(buffer_jpg.tobytes()), save=False)
+    camera.last_seen = timezone.now()
+    camera.status = "online"
+    camera.save(update_fields=["snapshot", "last_seen", "status"])
 
 def predict_frame_multi(frame, camera_id, skip_rate=None):
     """
@@ -244,12 +248,7 @@ def predict_frame_multi(frame, camera_id, skip_rate=None):
         if label == "Suspicious":
             try:
                 camera = Camera.objects.get(id=camera_id)
-                _, buffer_jpg = cv2.imencode('.jpg', frame)
-                filename = f"suspicious_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                camera.snapshot.save(filename, ContentFile(buffer_jpg.tobytes()), save=False)
-                camera.last_seen = timezone.now()
-                camera.status = "online"
-                camera.save(update_fields=["snapshot", "last_seen", "status"])
+                _save_camera_snapshot(camera, frame)
             except Camera.DoesNotExist:
                 print(f"Camera {camera_id} not found")
             except Exception as e:
@@ -357,7 +356,9 @@ def predict_frame_multi15(frame, camera_name, skip_rate=None):
         # snapshot
         if label == "Suspicious":
             try:
-                cam = Camera.objects.filter(name=camera_name).first()
+                cam = Camera.objects.filter(id=camera_name).first()
+                if cam is None:
+                    cam = Camera.objects.filter(name=camera_name).first()
 
                 if cam:
                     filename = f"{camera_name}_{int(cv2.getTickCount())}.jpg"
@@ -383,18 +384,22 @@ import numpy as np
 SEQ_LEN = 16
 IMG_SIZE = 160
 
-def run_video_prediction(video_path, model):
-    """Optimized video prediction using TensorFlow compiled function"""
+def run_video_prediction(video_path, model, *, camera=None, stop_on_suspicious=True):
+    """Run video prediction and optionally stop as soon as suspicious activity is found."""
     cap = cv2.VideoCapture(video_path)
 
     frames = []
-    results = []
+    suspicious = 0
+    normal = 0
+    snapshot_saved = False
+    first_suspicious_frame = None
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
+        original_frame = frame.copy()
         frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_LINEAR)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame = frame.astype("float32") / 255.0
@@ -414,18 +419,32 @@ def run_video_prediction(video_path, model):
                 pred_value = float(np.max(pred))
 
                 label = "Suspicious" if pred_value > 0.5 else "Normal"
-
-                results.append(label)
             except Exception as e:
                 print(f"Video prediction error: {e}")
+                frames.pop(0)
+                continue
+
+            if label == "Suspicious":
+                suspicious += 1
+                if first_suspicious_frame is None:
+                    first_suspicious_frame = original_frame
+                if camera is not None and not snapshot_saved:
+                    try:
+                        _save_camera_snapshot(camera, original_frame, prefix="video_suspicious")
+                        snapshot_saved = True
+                    except Exception as e:
+                        print(f"Video snapshot save error: {e}")
+
+                if stop_on_suspicious:
+                    cap.release()
+                    return "Suspicious", suspicious, normal, first_suspicious_frame
+            else:
+                normal += 1
 
             frames.pop(0)
 
     cap.release()
 
-    suspicious = results.count("Suspicious")
-    normal = results.count("Normal")
-
     final = "Suspicious" if suspicious > normal else "Normal"
 
-    return final, suspicious, normal
+    return final, suspicious, normal, first_suspicious_frame

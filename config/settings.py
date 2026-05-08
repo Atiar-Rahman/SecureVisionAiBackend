@@ -1,15 +1,35 @@
 from datetime import timedelta
 import os
-from decouple import config
+from decouple import AutoConfig
 from pathlib import Path
+
+try:
+    import cloudinary
+except ImportError:  # pragma: no cover - optional until dependency is installed
+    cloudinary = None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+config = AutoConfig(search_path=BASE_DIR)
+
+
+def _to_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off", "release", "prod", "production"}:
+        return False
+    return default
 
 
 
 SECRET_KEY = config('SECRET_KEY')
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = _to_bool(config('DEBUG', default=False))
 
 ALLOWED_HOSTS = ['*']
 
@@ -194,3 +214,12 @@ SWAGGER_SETTINGS = {
       }
    }
 }
+
+
+if cloudinary and config("CLOUDINARY_CLOUD_NAME", default=""):
+    cloudinary.config(
+        cloud_name=config("CLOUDINARY_CLOUD_NAME"),
+        api_key=config("CLOUDINARY_API_KEY"),
+        api_secret=config("CLOUDINARY_API_SECRET"),
+        secure=True,
+    )
