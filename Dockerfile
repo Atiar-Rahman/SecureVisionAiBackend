@@ -20,4 +20,4 @@ COPY . .
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT"]
+CMD ["sh", "-c", "daphne -b 0.0.0.0 -p ${PORT:-10000} config.asgi:application"]
