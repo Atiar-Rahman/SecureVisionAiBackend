@@ -22,6 +22,7 @@ from detection.ml.predict3dcnn import predict_frame_multi3d
 
 from .cloudinary_utils import upload_frame_to_cloudinary, upload_video_to_cloudinary
 from .models import VideoPrediction
+from .notifications import send_suspicious_detection_email
 from .serializers import VideoPredictionSerializer
 
 
@@ -77,13 +78,15 @@ def _upload_video_url(video_obj):
 
 
 def _build_alert(user, camera, confidence, frame_url=None):
-    return Alert.objects.create(
+    alert = Alert.objects.create(
         user=user,
         camera=camera,
         alert_type="suspicious",
         confidence=confidence,
         frame_url=frame_url,
     )
+    send_suspicious_detection_email(alert)
+    return alert
 
 
 class DetectAPIView14(APIView):
