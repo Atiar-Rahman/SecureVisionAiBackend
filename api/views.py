@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework import status
 from datetime import datetime
 
-@api_view(['GET'])
+@api_view(['GET','HEAD'])
 @permission_classes([AllowAny])
 def Home(request):
     return Response({
