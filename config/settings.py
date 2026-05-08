@@ -27,6 +27,12 @@ def _to_bool(value, default=False):
     return default
 
 
+def _split_csv(value):
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
 
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = _to_bool(config('DEBUG', default=False))
@@ -96,10 +102,22 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-CORS_ALLOWED_ORIGINS = [
+default_allowed_origins = [
     "http://localhost:5173",
     "https://secure-vision-ai-frontend.vercel.app",
+    "https://securevisionaibackend.onrender.com",
 ]
+
+configured_origins = _split_csv(config("CORS_ALLOWED_ORIGINS", default=""))
+env_origins = [
+    config("FRONTEND_URL", default="").strip(),
+    config("BACKEND_URL", default="").strip(),
+]
+
+CORS_ALLOWED_ORIGINS = list(
+    dict.fromkeys(origin for origin in [*default_allowed_origins, *configured_origins, *env_origins] if origin)
+)
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
